@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="google-site-verification" content="MM95edeFrap-GX9FSL2A2GqEHV3Z4m7NgRevEZC2QnQ" />
+  <title>首都圏 草野球場 ウレタンバット規制マップ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <header class="brand">
+        <p class="eyebrow">bat-checker</p>
+        <h1>首都圏 草野球場<br>ウレタンバット規制マップ</h1>
+        <p class="lead">東京23区・多摩・神奈川・埼玉・千葉の草野球場を、使用可・不可・情報なしで探せます。</p>
+      </header>
+
+      <form id="filters" class="filters" autocomplete="off">
+        <label class="field">
+          <span>エリア</span>
+          <select id="filter-area"></select>
+        </label>
+        <label class="field">
+          <span>ステータス</span>
+          <select id="filter-status">
+            <option value="all">すべて</option>
+            <option value="allowed">ウレタンOKのみ</option>
+            <option value="prohibited">ウレタンNGのみ</option>
+          </select>
+        </label>
+        <label class="field field-search">
+          <span>球場名</span>
+          <input id="filter-keyword" type="search" list="stadium-names" placeholder="例: 大田、駒沢、潮田" enterkeyhint="search" autocomplete="off">
+        </label>
+      </form>
+
+      <div class="result-bar">
+        <p id="result-count">読み込み中</p>
+        <button id="fit-all" type="button" class="btn btn-ghost">全体表示</button>
+      </div>
+
+      <ul id="stadium-list" class="stadium-list" aria-live="polite"></ul>
+
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-report" id="open-report">情報提供・修正リクエスト</button>
+        <div class="gear" id="gear-block" hidden>
+          <p>バットを探す</p>
+          <p class="affiliate-disclosure">広告</p>
+          <a id="gear-soft" href="#" target="_blank" rel="noopener noreferrer sponsored" data-affiliate-label="footer_soft">軟式バット</a>
+          <a id="gear-wood" href="#" target="_blank" rel="noopener noreferrer sponsored" data-affiliate-label="footer_metal">金属バット</a>
+        </div>
+        <p class="disclaimer">掲載は施設の公開案内に基づく参考情報です。ローカルルールは変わるので、試合前に必ず施設へ確認してください。利用者からの報告は、管理者が確認するまで地図へは反映しません。</p>
+        <button type="button" class="admin-corner" id="open-admin">管理者メニュー <span id="pending-count"></span></button>
+      </footer>
+    </aside>
+
+    <main class="map-wrap">
+      <div id="map" role="region" aria-label="球場マップ"></div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="swatch allowed"></i>使用可能</span>
+        <span><i class="swatch prohibited"></i>使用不可</span>
+        <span><i class="swatch unknown"></i>情報なし</span>
+      </div>
+      <div id="empty-state" class="empty-state" hidden>
+        <p id="empty-message">条件に合う球場がありません。</p>
+      </div>
+    </main>
+  </div>
+
+  <div id="detail-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <button type="button" class="modal-close" data-close="detail-modal" aria-label="閉じる">×</button>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <div id="report-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="report-title">
+      <button type="button" class="modal-close" data-close="report-modal" aria-label="閉じる">×</button>
+      <h2 id="report-title">情報提供・修正リクエスト</h2>
+      <p class="form-note">送った内容は承認待ちとして保存されます。管理者が確認するまで、地図の表示は変わりません。</p>
+      <p id="report-error" class="form-error" hidden></p>
+      <form id="report-form">
+        <label class="field">
+          <span>種類</span>
+          <select name="type" required>
+            <option value="correction">既存球場の修正・現地情報</option>
+            <option value="new">新しい球場の報告</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>球場名</span>
+          <input name="name" list="stadium-names" required maxlength="80" placeholder="例: 萩中公園野球場">
+          <datalist id="stadium-names"></datalist>
+        </label>
+        <label class="field">
+          <span>エリア</span>
+          <select name="area_category" id="report-area"></select>
+        </label>
+        <label class="field">
+          <span>ウレタンバット</span>
+          <select name="bat_status">
+            <option value="unknown">情報なし / 要確認</option>
+            <option value="allowed">使用可能だった</option>
+            <option value="prohibited">使用不可だった</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>分かった内容</span>
+          <textarea name="note" rows="4" required maxlength="500" placeholder="例: 受付で複合バット全面禁止と言われた。"></textarea>
+        </label>
+        <label class="field">
+          <span>両翼・中堅（任意）</span>
+          <input name="dimensions" maxlength="80" placeholder="例: 両翼90m / 中堅110m">
+        </label>
+        <label class="field">
+          <span>アクセス（任意）</span>
+          <input name="access" maxlength="80" placeholder="例: 蒲田駅">
+        </label>
+        <label class="field">
+          <span>駐車場（任意）</span>
+          <input name="parking" maxlength="80" placeholder="例: 有料（30分100円）">
+        </label>
+        <label class="field">
+          <span>雨天対応（任意）</span>
+          <input name="rain" maxlength="80" placeholder="例: 降雨時は中止。現地判断">
+        </label>
+        <label class="field">
+          <span>住所（任意）</span>
+          <input name="address" maxlength="120">
+        </label>
+        <div class="split">
+          <label class="field">
+            <span>お名前（任意）</span>
+            <input name="reporter_name" maxlength="40">
+          </label>
+          <label class="field">
+            <span>連絡先（任意）</span>
+            <input name="contact" maxlength="80" placeholder="メールなど">
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close="report-modal">キャンセル</button>
+          <button type="submit" class="btn btn-report" id="report-submit">送信する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="admin-modal" class="modal" hidden>
+    <div class="modal-card modal-wide modal-admin" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+      <button type="button" class="modal-close" data-close="admin-modal" aria-label="閉じる">×</button>
+      <h2 id="admin-title">管理者メニュー</h2>
+      <form id="admin-login">
+        <p class="form-note">承認待ちの確認と、球場ごとのウレタン可否の登録ができます。パスワードはブラウザ内だけで照合します。</p>
+        <p id="admin-error" class="form-error" hidden></p>
+        <label class="field">
+          <span>パスワード</span>
+          <input name="password" type="password" required autocomplete="current-password">
+        </label>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-report">入る</button>
+        </div>
+      </form>
+      <div id="admin-panel" hidden>
+        <div class="queue-head">
+          <div class="admin-tabs" role="tablist" aria-label="管理者メニュー">
+            <button type="button" class="admin-tab active" id="tab-queue" role="tab" aria-selected="true" aria-controls="admin-queue">承認待ち</button>
+            <button type="button" class="admin-tab" id="tab-status" role="tab" aria-selected="false" aria-controls="admin-status">球場ステータス</button>
+          </div>
+          <button type="button" class="btn btn-ghost" id="admin-logout">ログアウト</button>
+        </div>
+        <div id="admin-queue" role="tabpanel">
+          <p id="queue-count"></p>
+          <ul id="queue-list" class="queue-list"></ul>
+        </div>
+        <div id="admin-status" role="tabpanel" hidden>
+          <p class="form-note">右の3列のうち、設定したい列をクリックすると切り替わり、このブラウザの地図へすぐ登録されます。</p>
+          <div class="admin-status-filters">
+            <input id="admin-status-keyword" type="search" placeholder="球場名" aria-label="球場名で絞り込み">
+            <select id="admin-status-area" aria-label="エリアで絞り込み"></select>
+            <select id="admin-status-filter" aria-label="ステータスで絞り込み">
+              <option value="all">すべてのステータス</option>
+              <option value="allowed">使用可</option>
+              <option value="prohibited">使用不可</option>
+              <option value="unknown">情報なし</option>
+            </select>
+          </div>
+          <p id="admin-status-count" class="queue-meta"></p>
+          <div class="admin-status-scroll">
+            <div class="status-grid status-head">
+              <span>球場</span>
+              <span class="head-allowed">使用可</span>
+              <span class="head-prohibited">使用不可</span>
+              <span class="head-unknown">情報なし</span>
+            </div>
+            <ul id="admin-status-list" class="admin-status-list"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden role="status"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>

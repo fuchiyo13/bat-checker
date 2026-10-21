@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>首都圏 草野球場 ウレタンバット規制マップ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <header class="brand">
+        <p class="eyebrow">bat-checker</p>
+        <h1>首都圏 草野球場<br>ウレタンバット規制マップ</h1>
+        <p class="lead">東京23区・多摩・神奈川・埼玉・千葉の草野球場を、使用可・不可・情報なしで探せます。両翼、アクセス、駐車場は分かっている分だけ出します。</p>
+      </header>
+
+      <form id="filters" class="filters" autocomplete="off">
+        <label class="field">
+          <span>エリア</span>
+          <select id="filter-area" class="form-select">
+            <option value="all">すべて</option>
+            <option>足立区・荒川周辺</option>
+            <option>板橋区・北区・豊島区・周辺</option>
+            <option>江戸川区・臨海エリア</option>
+            <option>大田区・品川区・多摩川沿い</option>
+            <option>葛飾区・江戸川上流・江東区・中央区周辺</option>
+            <option>杉並区周辺</option>
+            <option>墨田区周辺</option>
+            <option>世田谷区周辺</option>
+            <option>台東区・港区・文京区・新宿区</option>
+            <option>練馬区周辺</option>
+            <option>その他23区</option>
+            <option>東京都下</option>
+            <option>神奈川県</option>
+            <option>埼玉県</option>
+            <option>千葉県</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>ステータス</span>
+          <select id="filter-status" class="form-select">
+            <option value="all">すべて</option>
+            <option value="allowed">ウレタンOKのみ</option>
+            <option value="prohibited">ウレタンNGのみ</option>
+          </select>
+        </label>
+        <label class="field field-search">
+          <span>球場名</span>
+          <input id="filter-keyword" class="form-control" type="search" placeholder="例: 大田、駒沢、神宮" enterkeyhint="search">
+        </label>
+      </form>
+
+      <div class="result-bar">
+        <p id="result-count">読み込み中</p>
+        <button id="fit-all" type="button" class="btn btn-sm btn-outline-dark">全体表示</button>
+      </div>
+
+      <ul id="stadium-list" class="stadium-list" aria-live="polite"></ul>
+
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-report" data-bs-toggle="modal" data-bs-target="#report-modal">
+          情報提供・修正リクエスト
+        </button>
+        <p class="disclaimer">掲載は施設の公開案内に基づく参考情報です。ローカルルールは変わるので、試合前に必ず施設へ確認してください。利用者からの報告は確認用に保存し、そのまま地図へは載せません。</p>
+      </footer>
+    </aside>
+
+    <main class="map-wrap">
+      <div id="map" role="region" aria-label="球場マップ"></div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="swatch allowed"></i>使用可能</span>
+        <span><i class="swatch prohibited"></i>使用不可</span>
+        <span><i class="swatch unknown"></i>情報なし</span>
+      </div>
+      <div id="empty-state" class="empty-state" hidden>
+        <p id="empty-message">条件に合う球場がありません。</p>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="app-toast" class="toast align-items-center border-0" role="status" aria-live="polite" aria-atomic="true">
+      <div class="d-flex">
+        <div id="toast-body" class="toast-body"></div>
+        <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="閉じる"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="report-modal" tabindex="-1" aria-labelledby="report-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <form class="modal-content" id="report-form">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="report-title">情報提供・修正リクエスト</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+        </div>
+        <div class="modal-body">
+          <p class="form-note">「この球場は使用不可だった」「新しい球場を追加してほしい」といった情報を送れます。内容はデータベースに保存されます。</p>
+          <div id="report-error" class="alert alert-danger" hidden></div>
+
+          <label class="field">
+            <span>種類</span>
+            <select name="report_type" class="form-select" required>
+              <option value="correction">既存球場の修正・現地情報</option>
+              <option value="new">新しい球場の報告</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>球場名</span>
+            <input name="stadium_name" class="form-control" list="stadium-names" required maxlength="80" placeholder="例: 萩中公園野球場">
+            <datalist id="stadium-names"></datalist>
+          </label>
+          <label class="field">
+            <span>エリア</span>
+            <select name="area" class="form-select">
+              <option value="">未選択</option>
+              <option>足立区・荒川周辺</option>
+              <option>板橋区・北区・豊島区・周辺</option>
+              <option>江戸川区・臨海エリア</option>
+              <option>大田区・品川区・多摩川沿い</option>
+              <option>葛飾区・江戸川上流・江東区・中央区周辺</option>
+              <option>杉並区周辺</option>
+              <option>墨田区周辺</option>
+              <option>世田谷区周辺</option>
+              <option>台東区・港区・文京区・新宿区</option>
+              <option>練馬区周辺</option>
+              <option>その他23区</option>
+              <option>東京都下</option>
+              <option>神奈川県</option>
+              <option>埼玉県</option>
+              <option>千葉県</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>ウレタンバット</span>
+            <select name="bat_status" class="form-select">
+              <option value="unknown">情報なし / 要確認</option>
+              <option value="allowed">使用可能だった</option>
+              <option value="prohibited">使用不可だった</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>分かった内容</span>
+            <textarea name="note" class="form-control" rows="4" required maxlength="500" placeholder="例: 受付で複合バット全面禁止と言われた。ビヨンドマックスも不可。"></textarea>
+          </label>
+          <label class="field">
+            <span>住所（任意）</span>
+            <input name="address" class="form-control" maxlength="120" placeholder="新規球場のときにあると助かります">
+          </label>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="field">
+                <span>お名前（任意）</span>
+                <input name="reporter_name" class="form-control" maxlength="40">
+              </label>
+            </div>
+            <div class="col-sm-6">
+              <label class="field">
+                <span>連絡先（任意）</span>
+                <input name="contact" class="form-control" maxlength="80" placeholder="メールなど">
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-report" id="report-submit">送信する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+</body>
+</html>
