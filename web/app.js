@@ -789,7 +789,7 @@ setGearLinks();
 updatePendingBadge();
 loadBoundaries();
 
-fetch("stadiums.json?v=20261016")
+fetch("stadiums.json?v=20261023")
   .then((response) => {
     if (!response.ok) throw new Error("球場データを読み込めませんでした。");
     return response.json();
